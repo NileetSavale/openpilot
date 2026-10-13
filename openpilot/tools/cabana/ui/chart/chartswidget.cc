@@ -915,7 +915,13 @@ void ChartsWidget::drawPythonPanel() {
   // left: snippet list
   ImGui::BeginChild("py_list", ImVec2(160, 0), true);
   for (int i = 0; i < (int)python_snippets_.size(); i++) {
-    if (ImGui::Selectable(python_snippets_[i].name.c_str(), python_selected_ == i)) {
+    const bool sel = python_selected_ == i;
+    if (sel) {
+      ImGui::PushStyleColor(ImGuiCol_Header,        IM_COL32(30, 90, 180, 220));
+      ImGui::PushStyleColor(ImGuiCol_HeaderHovered, IM_COL32(40, 110, 210, 220));
+      ImGui::PushStyleColor(ImGuiCol_Text,          IM_COL32_WHITE);
+    }
+    if (ImGui::Selectable(python_snippets_[i].name.c_str(), sel)) {
       python_selected_ = i;
       copyPySnippetToBuffers(python_snippets_[i], python_name_buf_, python_linked_buf_,
                              python_v1_buf_, python_v2_buf_, python_v3_buf_, python_v4_buf_,
@@ -923,6 +929,7 @@ void ChartsWidget::drawPythonPanel() {
       python_error_.clear();
       python_success_.clear();
     }
+    if (sel) ImGui::PopStyleColor(3);
   }
   if (ImGui::Button("+ New")) {
     PythonSnippet blank;

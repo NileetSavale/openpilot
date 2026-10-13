@@ -573,9 +573,8 @@ void ChartView::adoptSignal(SigItem s) {
 }
 
 void ChartView::showTip(double sec) {
-  ImRect tip_area(ImVec2(layout_.rect.Min.x, layout_.plot_area.Min.y), ImVec2(layout_.rect.Max.x, layout_.plot_area.Max.y));
   ImRect visible_rect = charts_widget_->chartVisibleRect(this);
-  visible_rect.ClipWith(tip_area);
+  visible_rect.ClipWith(layout_.rect);
   if (visible_rect.GetWidth() <= 0 || visible_rect.GetHeight() <= 0) {
     tip_label_.hide();
     return;
@@ -619,7 +618,10 @@ void ChartView::draw(float width) {
   layout_.plot_hovered = false;
   // the tile geometry is known before the child is entered, so it stays valid when imgui culls a scrolled out chart
   const ImVec2 tile_pos = ImGui::GetCursorScreenPos();
-  const ImVec2 tile_size(width, (float)settings.chart_height);
+  // grow chart height by one legend-row for each signal beyond the first so the plot area stays usable
+  const float row_h = ImGui::GetTextLineHeight() * 2 + ImGui::GetStyle().ItemInnerSpacing.y;
+  const float chart_h = (float)settings.chart_height + std::max(0, (int)sigs_.size() - 1) * row_h;
+  const ImVec2 tile_size(width, chart_h);
   layout_.rect = ImRect(tile_pos, tile_pos + tile_size);
   if (ImGui::BeginChild("chart", tile_size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
     updateLayout();
@@ -627,8 +629,7 @@ void ChartView::draw(float width) {
     drawContextMenu();
     // Keep the tip above the plot, but below popup menus and other windows.
     ImRect visible_rect = charts_widget_->chartVisibleRect(this);
-    visible_rect.ClipWith(ImRect(ImVec2(layout_.rect.Min.x, layout_.plot_area.Min.y),
-                               ImVec2(layout_.rect.Max.x, layout_.plot_area.Max.y)));
+    visible_rect.ClipWith(layout_.rect);
     if (!drawing_ghost_ && visible_rect.GetWidth() > 0 && visible_rect.GetHeight() > 0) tip_label_.draw(visible_rect);
   }
   ImGui::EndChild();
@@ -794,8 +795,13 @@ void ChartView::drawLegend() {
 }
 
 void ChartView::drawSeries() {
+  if (series_type_ == SeriesType::XYScatter && sigs_.size() < 2) {
+    const char *msg = sigs_.empty() ? "Add signals to use XY Scatter" : "Add a 2nd signal to use XY Scatter";
+    ImPlot::PlotText(msg, (x_min_ + x_max_) / 2.0, (y_min_ + y_max_) / 2.0);
+    return;
+  }
   // XY scatter mode: first signal is X axis, rest are Y; pair by interpolation
-  if (( series_type_ == SeriesType::XYScatter) && sigs_.size() >= 2) {
+  if (series_type_ == SeriesType::XYScatter && sigs_.size() >= 2) {
     const auto &x_sig = sigs_[0];
     for (int i = 1; i < (int)sigs_.size(); ++i) {
       const auto &y_sig = sigs_[i];
@@ -969,11 +975,14 @@ void ChartView::drawForeground() {
   ImDrawList *painter = ImPlot::GetPlotDrawList();
   ImPlot::PushPlotClipRect();
   float track_line_x = -1;
+  const bool xy_scatter = series_type_ == SeriesType::XYScatter && sigs_.size() >= 2;
   for (auto &s : sigs_) {
     if (!isNull(s.track_pt) && s.visible) {
-      ImVec2 pos(xPos(s.track_pt.x), yPos(s.track_pt.y));
-      painter->AddCircleFilled(pos, 5.5f, toImU32(graphicColor(s.color)));
-      track_line_x = std::max(track_line_x, pos.x);
+      float px = xPos(s.track_pt.x);
+      if (!xy_scatter) {
+        painter->AddCircleFilled(ImVec2(px, yPos(s.track_pt.y)), 5.5f, toImU32(graphicColor(s.color)));
+      }
+      track_line_x = std::max(track_line_x, px);
     }
   }
   if (track_line_x > 0) {
